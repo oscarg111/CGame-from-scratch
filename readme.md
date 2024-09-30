@@ -22,6 +22,13 @@ clean && build && mygame
 - `build` compiles the project.
 - `mygame` runs the executable after building.
 
+3. **Update the github**
+
+To update the github, add the files, commit changes, and push to origin.
+This can all be done with this command:
+
+git add . && git commit -m "Your commit message here" && git push origin main
+
 ### Note:
 
 Ensure that your development environment is properly configured to locate the necessary include paths and libraries stored in the `Q:/include` folder.
