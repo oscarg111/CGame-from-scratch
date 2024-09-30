@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
     printf("Version: %s\n", glGetString(GL_VERSION));
 
     puts("Hey lmao");
+    puts("Building games so coool");
 
     bool should_quit = false;
     while (!should_quit)
