@@ -3,6 +3,7 @@
 ### Requirements:
 
 - You must have all necessary libraries (e.g., SDL2, GLAD, Freetype, etc.) located in the `Q:/include` folder.
+- You must have Visual Studio tools downloaded on windows (the commands will be run on x64 Native tools)
 
 ### Steps to Build and Run:
 
