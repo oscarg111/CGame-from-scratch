@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
         for (u32 i = 0; i < body_count; ++i)
         {
             Body *body = physics_body_get(i);
-            render_quad(body->aabb.position, body->aabb.half_size, (vec4){1, 0, 0, 1});
+            render_quad(body->aabb.position, body->aabb.half_size, (vec4){1, 1, 0, 1});
 
             if (body->aabb.position[0] > global.render.width || body->aabb.position[0] < 0)
                 body->velocity[0] *= -1;
