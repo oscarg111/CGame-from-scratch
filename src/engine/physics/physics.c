@@ -7,9 +7,18 @@
 
 static Physics_State_internal state;
 
+static u32 iterations = 2;
+static f32 tick_rate;
+
 void physics_init(void)
 {
     state.body_list = array_list_create(sizeof(Body), 0);
+    state.static_body_list = array_list_create(sizeof(Static_Body), 0);
+
+    state.gravity = -200;
+    state.terminal_velocity = -10000;
+
+    tick_rate = 1.f / iterations;
 }
 
 void aabb_min_max(vec2 min, vec2 max, AABB aabb)
@@ -45,21 +54,6 @@ Hit ray_intersect_aabb(vec2 pos, vec2 magnitude, AABB aabb)
 
             last_entry = fmaxf(last_entry, fminf(t1, t2));
             first_exit = fminf(first_exit, fmaxf(t1, t2));
-
-            // vec2 point;
-            // vec2_scale(point, magnitude, t1);
-            // vec2_add(point, point, pos);
-            // if (min[i] < start_aabb.position[i])
-            //     render_quad(point, (vec2){5, 5}, ORANGE);
-            // else
-            //     render_quad(point, (vec2){5, 5}, CYAN);
-
-            // vec2_scale(point, magnitude, t2);
-            // vec2_add(point, point, pos);
-            // if (max[i] < start_aabb.position[i])
-            //     render_quad(point, (vec2){5, 5}, CYAN);
-            // else
-            //     render_quad(point, (vec2){5, 5}, ORANGE);
         }
         else if (pos[i] <= min[i] || pos[i] >= max[i])
         {
@@ -74,6 +68,20 @@ Hit ray_intersect_aabb(vec2 pos, vec2 magnitude, AABB aabb)
 
         hit.is_hit = true;
         hit.time = last_entry;
+
+        f32 dx = hit.position[0] - aabb.position[0];
+        f32 dy = hit.position[1] - aabb.position[1];
+        f32 px = aabb.half_size[0] - fabsf(dx);
+        f32 py = aabb.half_size[1] - fabsf(dy);
+
+        if (px < py)
+        {
+            hit.normal[0] = (dx > 0) - (dx < 0);
+        }
+        else
+        {
+            hit.normal[1] = (dy > 0) - (dy < 0);
+        }
     }
 
     return hit;
@@ -126,6 +134,89 @@ bool physics_point_intersect_aabb(vec2 point, AABB aabb)
            point[1] <= max[1];
 }
 
+static Hit sweep_static_bodies(AABB aabb, vec2 velocity)
+{
+    Hit result = {.time = 0xBEEF};
+
+    for (u32 i = 0; i < state.static_body_list->len; ++i)
+    {
+        Static_Body *static_body = physics_static_body_get(i);
+
+        AABB sum_aabb = static_body->aabb;
+        vec2_add(sum_aabb.half_size, sum_aabb.half_size, aabb.half_size);
+
+        Hit hit = ray_intersect_aabb(aabb.position, velocity, sum_aabb);
+        if (!hit.is_hit)
+        {
+            continue;
+        }
+
+        if (hit.time < result.time)
+        {
+            result = hit;
+        }
+        else if (hit.time == result.time)
+        {
+            if (fabsf(velocity[0]) > fabsf(velocity[1]) && hit.normal[0] != 0)
+            {
+                result = hit;
+            }
+            else if (fabsf(velocity[1]) > fabsf(velocity[0]) && hit.normal[1] != 0)
+            {
+                result = hit;
+            }
+        }
+    }
+
+    return result;
+}
+
+static void sweep_response(Body *body, vec2 velocity)
+{
+    Hit hit = sweep_static_bodies(body->aabb, velocity);
+
+    if (hit.is_hit)
+    {
+        body->aabb.position[0] = hit.position[0];
+        body->aabb.position[1] = hit.position[1];
+
+        if (hit.normal[0] != 0)
+        {
+            body->aabb.position[1] += velocity[1];
+            body->velocity[0] = 0;
+        }
+        else if (hit.normal[1] != 0)
+        {
+            body->aabb.position[0] += velocity[0];
+            body->velocity[1] = 0;
+        }
+    }
+    else
+    {
+        vec2_add(body->aabb.position, body->aabb.position, velocity);
+    }
+}
+
+static void stationary_response(Body *body)
+{
+    for (u32 i = 0; i < state.static_body_list->len; ++i)
+    {
+        Static_Body *static_body = physics_static_body_get(i);
+
+        AABB aabb = aabb_minkowski_difference(static_body->aabb, body->aabb);
+        vec2 min, max;
+        aabb_min_max(min, max, aabb);
+
+        if (min[0] <= 0 && max[0] >= 0 && min[1] <= 0 && max[1] >= 0)
+        {
+            vec2 penetration_vector;
+            aabb_penetration_vector(penetration_vector, aabb);
+
+            vec2_add(body->aabb.position, body->aabb.position, penetration_vector);
+        }
+    }
+}
+
 void physics_update(void)
 {
     Body *body;
@@ -133,10 +224,24 @@ void physics_update(void)
     for (u32 i = 0; i < state.body_list->len; ++i)
     {
         body = array_list_get(state.body_list, i);
-        body->velocity[0] += body->acceleration[0] * global.time.delta;
-        body->velocity[1] += body->acceleration[1] * global.time.delta;
-        body->aabb.position[0] += body->velocity[0] * global.time.delta;
-        body->aabb.position[1] += body->velocity[1] * global.time.delta;
+
+        body->velocity[1] += state.gravity;
+        if (state.terminal_velocity > body->velocity[1])
+        {
+            body->velocity[1] = state.terminal_velocity;
+        }
+
+        body->velocity[0] += body->acceleration[0];
+        body->velocity[1] += body->acceleration[1];
+
+        vec2 scaled_velocity;
+        vec2_scale(scaled_velocity, body->velocity, global.time.delta * tick_rate);
+
+        for (u32 j = 0; j < iterations; ++j)
+        {
+            sweep_response(body, scaled_velocity);
+            stationary_response(body);
+        }
     }
 }
 
@@ -161,4 +266,26 @@ usize physics_body_create(vec2 position, vec2 size)
 Body *physics_body_get(usize index)
 {
     return array_list_get(state.body_list, index);
+}
+
+usize physics_static_body_create(vec2 position, vec2 size)
+{
+    Static_Body static_body = {
+        .aabb = {
+            .position = {position[0], position[1]},
+            .half_size = {size[0] * 0.5, size[1] * 0.5},
+        },
+    };
+
+    if (array_list_append(state.static_body_list, &static_body) == (usize)-1)
+    {
+        ERROR_EXIT("Could not append static body to list\n");
+    }
+
+    return state.static_body_list->len - 1;
+}
+
+Static_Body *physics_static_body_get(usize index)
+{
+    return array_list_get(state.static_body_list, index);
 }
