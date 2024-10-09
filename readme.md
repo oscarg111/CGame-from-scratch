@@ -28,7 +28,7 @@ clean && build && mygame
 To update the github, add the files, commit changes, and push to origin.
 This can all be done with this command:
 
-git add . && git commit -m "Your commit message here" && git push origin main
+git add . && git commit -m "Changes made" && git push origin main
 
 ### Note:
 
