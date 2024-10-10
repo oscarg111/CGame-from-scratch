@@ -91,6 +91,7 @@ void enemy_on_hit_static(Body *self, Static_Body *other, Hit hit)
 
 int main(int argc, char *argv[])
 {
+    puts("Starting game generation");
     time_init(60);
     config_init();
     render_init();
