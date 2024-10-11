@@ -5,8 +5,10 @@
 #include "physics.h"
 #include "types.h"
 
-typedef struct entity {
+typedef struct entity
+{
 	usize body_id;
+	usize animation_id;
 	bool is_active;
 } Entity;
 

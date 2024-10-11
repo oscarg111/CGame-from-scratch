@@ -1,12 +1,13 @@
 #include <glad/glad.h>
 
-#include "../global.h"
-#include "../render.h"
-#include "render_internal.h"
-#include "../util.h"
-
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+
+#include "../global.h"
+#include "../render.h"
+#include "../array_list.h"
+#include "../util.h"
+#include "render_internal.h"
 
 static f32 window_width = 1290;
 static f32 window_height = 720;
@@ -25,19 +26,17 @@ static u32 vao_batch;
 static u32 vbo_batch;
 static u32 ebo_batch;
 static u32 shader_batch;
-static u32 texture_batch;
 static Array_List *list_batch;
 
 SDL_Window *render_init(void)
 {
-    /// RENDER WIDTH AND VIEWPORT WIDTH SHOULD BE DIFFERENT - PIXEL ART
     SDL_Window *window = render_init_window(window_width, window_height);
 
     render_init_quad(&vao_quad, &vbo_quad, &ebo_quad);
+    render_init_batch_quads(&vao_batch, &vbo_batch, &ebo_batch);
     render_init_line(&vao_line, &vbo_line);
     render_init_shaders(&shader_default, &shader_batch, render_width, render_height);
     render_init_color_texture(&texture_color);
-    render_init_batch_quads(&vao_batch, &vbo_batch, &ebo_batch);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -68,17 +67,46 @@ static void render_batch(Batch_Vertex *vertices, usize count, u32 texture_id)
     glUseProgram(shader_batch);
     glBindVertexArray(vao_batch);
 
-    // count >> 2 s the same as count / 4.
-    // 4 Vertices per Quad.
-    // 6 Indices per Quad (two triangles).
     glDrawElements(GL_TRIANGLES, (count >> 2) * 6, GL_UNSIGNED_INT, NULL);
 }
 
-void render_end(SDL_Window *window)
+static void append_quad(vec2 position, vec2 size, vec4 texture_coordinates, vec4 color)
 {
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINES);
-    render_batch(list_batch->items, list_batch->len, texture_batch);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    vec4 uvs = {0, 0, 1, 1};
+
+    if (texture_coordinates != NULL)
+    {
+        memcpy(uvs, texture_coordinates, sizeof(vec4));
+    }
+
+    array_list_append(list_batch, &(Batch_Vertex){
+                                      .position = {position[0], position[1]},
+                                      .uvs = {uvs[0], uvs[1]},
+                                      .color = {color[0], color[1], color[2], color[3]},
+                                  });
+
+    array_list_append(list_batch, &(Batch_Vertex){
+                                      .position = {position[0] + size[0], position[1]},
+                                      .uvs = {uvs[2], uvs[1]},
+                                      .color = {color[0], color[1], color[2], color[3]},
+                                  });
+
+    array_list_append(list_batch, &(Batch_Vertex){
+                                      .position = {position[0] + size[0], position[1] + size[1]},
+                                      .uvs = {uvs[2], uvs[3]},
+                                      .color = {color[0], color[1], color[2], color[3]},
+                                  });
+
+    array_list_append(list_batch, &(Batch_Vertex){
+                                      .position = {position[0], position[1] + size[1]},
+                                      .uvs = {uvs[0], uvs[3]},
+                                      .color = {color[0], color[1], color[2], color[3]},
+                                  });
+}
+
+void render_end(SDL_Window *window, u32 batch_texture_id)
+{
+    render_batch(list_batch->items, list_batch->len, batch_texture_id);
 
     SDL_GL_SwapWindow(window);
 }
@@ -151,50 +179,9 @@ void render_aabb(f32 *aabb, vec4 color)
     render_quad_line(&aabb[0], size, color);
 }
 
-static void append_quad(vec2 position, vec2 size, vec4 texture_coordinates, vec4 color)
+f32 render_get_scale()
 {
-    vec4 uvs = {0, 0, 1, 1};
-
-    if (texture_coordinates != NULL)
-    {
-        memcpy(uvs, texture_coordinates, sizeof(vec4));
-    }
-
-    array_list_append(list_batch, &(Batch_Vertex){
-                                      .position = {position[0], position[1]},
-                                      .uvs = {uvs[0], uvs[1]},
-                                      .color = {color[0], color[1], color[2], color[3]},
-                                  });
-
-    array_list_append(list_batch, &(Batch_Vertex){
-                                      .position = {position[0] + size[0], position[1]},
-                                      .uvs = {uvs[2], uvs[1]},
-                                      .color = {color[0], color[1], color[2], color[3]},
-                                  });
-
-    array_list_append(list_batch, &(Batch_Vertex){
-                                      .position = {position[0] + size[0], position[1] + size[1]},
-                                      .uvs = {uvs[2], uvs[3]},
-                                      .color = {color[0], color[1], color[2], color[3]},
-                                  });
-
-    array_list_append(list_batch, &(Batch_Vertex){
-                                      .position = {position[0], position[1] + size[1]},
-                                      .uvs = {uvs[0], uvs[3]},
-                                      .color = {color[0], color[1], color[2], color[3]},
-                                  });
-}
-
-static void calculate_sprite_texture_coordinates(vec4 result, f32 row, f32 column, f32 texture_width, f32 texture_height, f32 cell_width, f32 cell_height)
-{
-    f32 w = 1.0 / (texture_width / cell_width);
-    f32 h = 1.0 / (texture_height / cell_height);
-    f32 x = column * w;
-    f32 y = row * h;
-    result[0] = x;
-    result[1] = y;
-    result[2] = x + w;
-    result[3] = y + h;
+    return scale;
 }
 
 void render_sprite_sheet_init(Sprite_Sheet *sprite_sheet, const char *path, f32 cell_width, f32 cell_height)
@@ -223,23 +210,31 @@ void render_sprite_sheet_init(Sprite_Sheet *sprite_sheet, const char *path, f32 
     sprite_sheet->cell_height = cell_height;
 }
 
-void render_sprite_sheet_frame(Sprite_Sheet *sprite_sheet, f32 row, f32 column, vec2 position)
+static void calculate_sprite_texture_coordinates(vec4 result, f32 row, f32 column, f32 texture_width, f32 texture_height, f32 cell_width, f32 cell_height)
+{
+    f32 w = 1.0 / (texture_width / cell_width);
+    f32 h = 1.0 / (texture_height / cell_height);
+    f32 x = column * w;
+    f32 y = row * h;
+    result[0] = x;
+    result[1] = y;
+    result[2] = x + w;
+    result[3] = y + h;
+}
+
+void render_sprite_sheet_frame(Sprite_Sheet *sprite_sheet, f32 row, f32 column, vec2 position, bool is_flipped)
 {
     vec4 uvs;
     calculate_sprite_texture_coordinates(uvs, row, column, sprite_sheet->width, sprite_sheet->height, sprite_sheet->cell_width, sprite_sheet->cell_height);
 
+    if (is_flipped)
+    {
+        f32 tmp = uvs[0];
+        uvs[0] = uvs[2];
+        uvs[2] = tmp;
+    }
+
     vec2 size = {sprite_sheet->cell_width, sprite_sheet->cell_height};
     vec2 bottom_left = {position[0] - size[0] * 0.5, position[1] - size[1] * 0.5};
-    append_quad(bottom_left, size, uvs, (vec4){1, 1, 1, 1});
-}
-
-f32 render_get_scale()
-{
-    return scale;
-}
-
-// NOTE: Temporary setter - will use texture slots later.
-void render_set_batch_texture(u32 texture_id)
-{
-    texture_batch = texture_id;
+    append_quad(bottom_left, size, uvs, WHITE);
 }
