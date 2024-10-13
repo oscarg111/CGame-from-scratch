@@ -28,6 +28,7 @@ bool player_is_grounded = false;
 
 static void input_handle(Body *body_player)
 {
+	puts("input being handled");
 	if (global.input.escape)
 	{
 		should_quit = true;
